@@ -1,0 +1,8 @@
+{
+  "canisters": {
+    "Ledger": {
+      "main": "main.mo",
+      "type": "motoko"
+    }
+  }
+}
