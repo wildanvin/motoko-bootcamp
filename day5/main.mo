@@ -1,8 +1,13 @@
+import Interface "ICInterface";
+
 import HashMap "mo:base/HashMap";
 import Principal "mo:base/Principal";
 import Result "mo:base/Result";
 import Iter "mo:base/Iter";
 import Float "mo:base/Float";
+import Text "mo:base/Text";
+import Buffer "mo:base/Buffer";
+import Error "mo:base/Error";
 
 actor Verifier {
 
@@ -108,32 +113,101 @@ actor Verifier {
   };
 
   // Part 3: Verifying the controller of the calculator.
-  // STEP 3 - BEGIN
   // NOTE: Not possible to develop locally,
   // as actor "aaaa-aa" (aka the IC itself, exposed as an interface) does not exist locally
   public func verifyOwnership(canisterId : Principal, p : Principal) : async Result.Result<Bool, Text> {
-    //let managementCanister = ic.management.canister_status();
-    return #err("not implemented");
+
+  //public func verifyOwnership(canisterId : Text/*, p : Principal*/) : async Result.Result<Bool, Text> {
+    
+    let IC = "aaaaa-aa";
+    let ic = actor (IC) : Interface.Self;
+
+    var controllers : [Principal] = [];
+
+    let canister_id = canisterId;
+    //let canister_id = Principal.fromText(canisterId);
+
+    try {
+        let canisterStatus = await ic.canister_status({ canister_id });
+            //controllers := canisterStatus.settings.controllers;
+        } catch (e) {
+            controllers := await parseControllersFromCanisterStatusErrorIfCallerNotController(Error.message(e));
+            for (x in controllers.vals()) {
+                if (x == p) {
+                    return #ok(true);
+                };
+            };
+            return #err("You are not the owner of the canister");
+        };
+
+    #ok(true);
   };
 
-  var controllers : [Principal] = [];
-  /*
-  func canister_status() : async () {
-    let canister_id = Principal.fromText(canister_principal);
 
-    let canisterStatus = await ic.canister_status({ canister_id });
+  // Part4: Verify work:    
+  public shared ({ caller }) func verifyWork(canisterId : Principal, p : Principal) : async Result.Result<Bool, Text> {
 
-    controllers := canisterStatus.settings.controllers;
+    let testResult = await test(canisterId);
+    let ownershipResult = await verifyOwnership(canisterId, p);
+    
+    switch(testResult){
+        case(#err(failure)){
+            switch(failure){
+                case(#UnexpectedValue(text)){
+                    return #err(text);
+                };
+                case(#UnexpectedError(text)){
+                    return #err(text);
+
+                };
+            };
+        };
+        case(#ok()){
+            switch(ownershipResult){
+                case(#err(msg)){ #err(msg)};
+                case(#ok(val)){
+                    switch (studentProfileStore.get(caller)) {
+                        case (null) {return #err("Create a profile first")};
+                        case (?profile ) {
+                            var temp : StudentProfile = {
+                                name = profile.name;
+                                team = profile.team;
+                                graduate = true;
+                            };
+                            studentProfileStore.put(caller, temp);
+                            return #ok(true);
+                        };
+                    };
+                };
+            };
+        };
+    };
   };
-  */
 
-  /*
-  public shared(verifyOwnership) func verifyOwnership(canisterId : Principal, principalId : Principal) : async Bool {
-    let managementCanister = ic.management.canister_status();
-    let canisterStatus = await managementCanister.status(canisterId);
-    return canisterStatus.controllers.has(principalId);
+
+
+  /// Parses the controllers from the error returned by canister status when the caller is not the controller
+  /// Of the canister it is calling
+  ///
+  /// TODO: This is a temporary solution until the IC exposes this information.
+  /// TODO: Note that this is a pretty fragile text parsing solution (check back in periodically for better solution)
+  ///
+  /// Example error message:
+  ///
+  /// "Only the controllers of the canister r7inp-6aaaa-aaaaa-aaabq-cai can control it.
+  /// Canister's controllers: rwlgt-iiaaa-aaaaa-aaaaa-cai 7ynmh-argba-5k6vi-75frw-kfqpa-3xtca-nmzk3-hrmvb-fydxk-w4a4k-2ae
+  /// Sender's ID: rkp4c-7iaaa-aaaaa-aaaca-cai"
+  public func parseControllersFromCanisterStatusErrorIfCallerNotController(errorMessage : Text) : async [Principal] {
+    let lines = Iter.toArray(Text.split(errorMessage, #text("\n")));
+    let words = Iter.toArray(Text.split(lines[1], #text(" ")));
+    var i = 2;
+    let controllers = Buffer.Buffer<Principal>(0);
+    while (i < words.size()) {
+      controllers.add(Principal.fromText(words[i]));
+      i += 1;
+    };
+    Buffer.toArray<Principal>(controllers);
   };
-  */
 
   //
 
