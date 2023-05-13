@@ -1,4 +1,6 @@
 import Interface "ICInterface";
+import Interface2 "ICInterface2";
+
 
 import HashMap "mo:base/HashMap";
 import Principal "mo:base/Principal";
@@ -89,27 +91,32 @@ actor Verifier {
   public func test(canisterId : Principal) : async TestResult {
     let calculator = actor (Principal.toText(canisterId)) : actor {
       add : shared(n : Int) -> async Int;
-      sub : shared(n : Int) -> async Int;
+      sub : shared(n : Nat) -> async Int;
       reset : shared() -> async Int;
     };
 
-    var result = await calculator.add(2);
+    try {
+        var result = await calculator.reset();
+        result := await calculator.add(2);
 
-    if (result != 2) {
-      return #err(#UnexpectedValue("Add function failed"));
+        if (result != 2) {
+            return #err(#UnexpectedValue("Add function failed"));
+        };
+
+        result := await calculator.sub(1);
+        if (result != 1) {
+            return #err(#UnexpectedValue("Sub function failed"));
+        };
+
+        result := await calculator.reset();
+        if (result != 0) {
+            return #err(#UnexpectedValue("Reset function failed"));
+        };
+
+        #ok();
+    } catch (e) {
+        return #err(#UnexpectedError("Something unexpected happened"));
     };
-
-    result := await calculator.sub(1);
-    if (result != 1) {
-      return #err(#UnexpectedValue("Sub function failed"));
-    };
-
-    result := await calculator.reset();
-    if (result != 0) {
-      return #err(#UnexpectedValue("Reset function failed"));
-    };
-
-    #ok();
   };
 
   // Part 3: Verifying the controller of the calculator.
@@ -129,18 +136,38 @@ actor Verifier {
 
     try {
         let canisterStatus = await ic.canister_status({ canister_id });
-            //controllers := canisterStatus.settings.controllers;
+        controllers := canisterStatus.settings.controllers;
+        #err("1) What?");
         } catch (e) {
             controllers := await parseControllersFromCanisterStatusErrorIfCallerNotController(Error.message(e));
             for (x in controllers.vals()) {
-                if (x == p) {
-                    return #ok(true);
+                switch(Principal.compare(x, p)){
+                    case(#equal){ return #ok(true)};
+                    case(_){};
                 };
             };
             return #err("You are not the owner of the canister");
         };
+  };
 
-    #ok(true);
+
+  public func getOwners(canisterId : Text) : async [Principal] {    
+    let IC = "aaaaa-aa";
+    let ic = actor (IC) : Interface.Self;
+
+    var controllers : [Principal] = [];
+
+    //let canister_id = canisterId;
+    let canister_id = Principal.fromText(canisterId);
+
+    try {
+        let canisterStatus = await ic.canister_status({ canister_id });
+            controllers := canisterStatus.settings.controllers;
+            return controllers;
+    } catch (e) {
+            controllers := await parseControllersFromCanisterStatusErrorIfCallerNotController(Error.message(e));
+            return controllers;
+    };
   };
 
 
